@@ -10,14 +10,18 @@ const httpServer = http.createServer(app);
 // ensure the deployed URL is allowed
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-  : ['http://localhost:3000', 'https://quizapp.onrender.com', 'https://quizapp-mo86.onrender.com'];
+  : [
+      'http://localhost:3000',
+      'https://quizapp.onrender.com',
+      'https://quizapp-mo86.onrender.com' // ensure mobile hostname is allowed
+    ];
 
+// Configure Socket.IO to accept both websocket and polling transports
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
     methods: ['GET', 'POST']
   },
-  // optional: allow both polling and websocket transports
   transports: ['websocket', 'polling']
 });
 
@@ -302,7 +306,13 @@ if (fs.existsSync(buildPath)) {
   });
 }
 
-const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+// Render commonly sets PORT; fallback to 10000 which Render's banner referenced
+const PORT = process.env.PORT || 10000;
+// bind explicitly to 0.0.0.0
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on ${PORT} (bound to 0.0.0.0)`);
 });
+
+// Increase keep-alive and headers timeout to avoid intermittent reset/timeouts on Render
+httpServer.keepAliveTimeout = 120000;   // 120s
+httpServer.headersTimeout = 125000;     // slightly higher than keepAlive
