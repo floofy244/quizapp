@@ -1,0 +1,451 @@
+import React, { useState, useEffect } from 'react';
+import io from 'socket.io-client';
+
+const TeacherDashboard = ({ onBack }) => {
+  const [socket, setSocket] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [poll, setPoll] = useState(null);
+  const [results, setResults] = useState({});
+  const [studentCount, setStudentCount] = useState(0);
+  const [students, setStudents] = useState([]);
+  const [newPoll, setNewPoll] = useState({
+    question: '',
+    options: ['', ''],
+    timeLimit: 60,
+    correctAnswers: [false, false]
+  });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [showSidePanel, setShowSidePanel] = useState(false);
+  const [activeTab, setActiveTab] = useState('chat');
+  const [chatMessages, setChatMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+
+  useEffect(() => {
+    const newSocket = io('http://localhost:5000');
+    setSocket(newSocket);
+
+    newSocket.on('connect', () => {
+      setConnected(true);
+      newSocket.emit('teacher-join');
+    });
+
+    newSocket.on('poll-status', (data) => {
+      setPoll(data.activePoll);
+      setResults(data.results);
+      setStudentCount(data.studentCount);
+      setStudents(data.students || []);
+    });
+
+    newSocket.on('poll-created', (data) => {
+      setPoll(data);
+      setResults({});
+      setSuccess('Poll created successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    });
+
+    newSocket.on('poll-results', (data) => {
+      setResults(data.results);
+    });
+
+    newSocket.on('poll-completed', (data) => {
+      setPoll(prev => prev ? { ...prev, status: 'completed' } : null);
+      setResults(data.results);
+      setSuccess('Poll completed!');
+      setTimeout(() => setSuccess(''), 3000);
+    });
+
+    newSocket.on('time-update', (data) => {
+      setPoll(prev => prev ? { ...prev, timeLeft: data.timeLeft } : null);
+    });
+
+    newSocket.on('student-joined', (data) => {
+      console.log('Student joined:', data);
+      setStudentCount(data.studentCount);
+      setStudents(data.students || []);
+      setSuccess(`${data.studentName} joined the session`);
+      setTimeout(() => setSuccess(''), 2000);
+    });
+
+    newSocket.on('student-left', (data) => {
+      setStudentCount(data.studentCount);
+      setStudents(data.students || []);
+    });
+
+    newSocket.on('chat-message', (data) => {
+      console.log('Chat message received:', data);
+      setChatMessages(prev => [...prev, data]);
+    });
+
+    newSocket.on('chat-history', (messages) => {
+      setChatMessages(messages);
+    });
+
+    newSocket.on('error', (message) => {
+      setError(message);
+      setTimeout(() => setError(''), 5000);
+    });
+
+    return () => {
+      newSocket.close();
+    };
+  }, []);
+
+  const addOption = () => {
+    if (newPoll.options.length < 6) {
+      setNewPoll({
+        ...newPoll,
+        options: [...newPoll.options, ''],
+        correctAnswers: [...newPoll.correctAnswers, false]
+      });
+    }
+  };
+
+  const removeOption = (index) => {
+    if (newPoll.options.length > 2) {
+      setNewPoll({
+        ...newPoll,
+        options: newPoll.options.filter((_, i) => i !== index),
+        correctAnswers: newPoll.correctAnswers.filter((_, i) => i !== index)
+      });
+    }
+  };
+
+  const updateOption = (index, value) => {
+    const newOptions = [...newPoll.options];
+    newOptions[index] = value;
+    setNewPoll({
+      ...newPoll,
+      options: newOptions
+    });
+  };
+
+  const updateCorrectAnswer = (index, isCorrect) => {
+    const newCorrectAnswers = [...newPoll.correctAnswers];
+    newCorrectAnswers[index] = isCorrect;
+    setNewPoll({
+      ...newPoll,
+      correctAnswers: newCorrectAnswers
+    });
+  };
+
+  const createPoll = () => {
+    if (!newPoll.question.trim()) {
+      setError('Please enter a question');
+      return;
+    }
+
+    const validOptions = newPoll.options.filter(option => option.trim());
+    if (validOptions.length < 2) {
+      setError('Please provide at least 2 options');
+      return;
+    }
+
+    socket.emit('create-poll', {
+      question: newPoll.question.trim(),
+      options: validOptions,
+      timeLimit: newPoll.timeLimit
+    });
+
+    setNewPoll({
+      question: '',
+      options: ['', ''],
+      timeLimit: 60,
+      correctAnswers: [false, false]
+    });
+    setError('');
+  };
+
+  const askNewQuestion = () => {
+    if (!poll || poll.status === 'completed') {
+      createPoll();
+    }
+  };
+
+  const sendMessage = () => {
+    if (newMessage.trim()) {
+      const message = {
+        user: 'Teacher',
+        message: newMessage.trim(),
+        isOwn: true
+      };
+      console.log('Sending chat message:', message);
+      socket.emit('chat-message', message);
+      setNewMessage('');
+    }
+  };
+
+  const kickStudent = (studentId) => {
+    socket.emit('kick-student', studentId);
+  };
+
+  const canCreatePoll = () => {
+    return !poll || poll.status === 'completed';
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  if (!connected) {
+    return (
+      <div className="app">
+        <div className="container">
+          <div className="loading">
+            <div className="loading-spinner"></div>
+            Connecting to server...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
+      <div className="header">
+        <div className="header-tag">
+          + Intervue Poll
+        </div>
+      </div>
+
+      <div className="container">
+        {error && <div className="error">{error}</div>}
+        {success && <div className="success">{success}</div>}
+
+        {canCreatePoll() ? (
+          <div className="card">
+            <h1 className="title">Let's Get Started</h1>
+            <p className="subtitle">
+              you'll have the ability to create and manage polls, ask questions, and monitor your students' responses in real-time.
+            </p>
+
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label className="form-label">Enter your question</label>
+                <div className="timer-dropdown">
+                  <select 
+                    className="timer-select"
+                    value={newPoll.timeLimit}
+                    onChange={(e) => setNewPoll({ ...newPoll, timeLimit: parseInt(e.target.value) })}
+                  >
+                    <option value={30}>30 seconds</option>
+                    <option value={60}>60 seconds</option>
+                    <option value={90}>90 seconds</option>
+                    <option value={120}>120 seconds</option>
+                  </select>
+                </div>
+              </div>
+              <textarea
+                className="form-textarea"
+                value={newPoll.question}
+                onChange={(e) => setNewPoll({ ...newPoll, question: e.target.value })}
+                placeholder="Enter your question here..."
+                maxLength={100}
+              />
+              <div className="char-counter">
+                {newPoll.question.length}/100
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Edit Options</label>
+              {newPoll.options.map((option, index) => (
+                <div key={index} className="option-input">
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={option}
+                    onChange={(e) => updateOption(index, e.target.value)}
+                    placeholder={`Option ${index + 1}`}
+                  />
+                  <div className="option-actions">
+                    <div className="correct-radio">
+                      <span>Is it Correct?</span>
+                      <div className="radio-group">
+                        <label className="radio-option">
+                          <input
+                            type="radio"
+                            name={`correct-${index}`}
+                            checked={newPoll.correctAnswers[index] === true}
+                            onChange={() => updateCorrectAnswer(index, true)}
+                          />
+                          Yes
+                        </label>
+                        <label className="radio-option">
+                          <input
+                            type="radio"
+                            name={`correct-${index}`}
+                            checked={newPoll.correctAnswers[index] === false}
+                            onChange={() => updateCorrectAnswer(index, false)}
+                          />
+                          No
+                        </label>
+                      </div>
+                    </div>
+                    {newPoll.options.length > 2 && (
+                      <button 
+                        className="btn btn-danger" 
+                        onClick={() => removeOption(index)}
+                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {newPoll.options.length < 6 && (
+                <button className="add-option-link" onClick={addOption}>
+                  + Add More option
+                </button>
+              )}
+            </div>
+
+            <button className="btn" onClick={createPoll}>
+              Ask Question
+            </button>
+          </div>
+        ) : (
+          <div className="poll-container">
+            <div className="question-header">
+              <span className="question-number">Question</span>
+              {poll.status === 'active' && (
+                <div className="timer">
+                  {formatTime(poll.timeLeft)}
+                </div>
+              )}
+            </div>
+            
+            <div className="poll-question">{poll.question}</div>
+            
+            <div className="poll-options">
+              {poll.options.map((option, index) => (
+                <div key={index} className="poll-option">
+                  <div className="poll-option-number">{index + 1}</div>
+                  <span>{option}</span>
+                  {results[option] && (
+                    <div className="result-fill" style={{ 
+                      width: `${(results[option] / Math.max(...Object.values(results))) * 100}%`,
+                      height: '4px',
+                      background: '#7765DA',
+                      borderRadius: '2px',
+                      marginLeft: 'auto'
+                    }}></div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {Object.keys(results).length > 0 && (
+              <div className="results">
+                <h3 style={{ marginBottom: '16px', color: '#373737' }}>Live Results</h3>
+                {Object.entries(results).map(([option, count]) => {
+                  const total = Object.values(results).reduce((sum, c) => sum + c, 0);
+                  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                  
+                  return (
+                    <div key={option} className="result-item">
+                      <span className="result-option">{option}</span>
+                      <div className="result-bar">
+                        <div 
+                          className="result-fill" 
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                      <span className="result-percentage">{percentage}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <button className="btn" onClick={askNewQuestion} style={{ marginTop: '24px' }}>
+              + Ask a new question
+            </button>
+          </div>
+        )}
+
+        {/* Side Panel */}
+        <div className={`side-panel ${showSidePanel ? 'open' : ''}`}>
+          <div className="panel-header">
+            <h3 className="panel-title">Panel</h3>
+            <button className="close-panel" onClick={() => setShowSidePanel(false)}>
+              ×
+            </button>
+          </div>
+          
+          <div className="panel-tabs">
+            <button 
+              className={`panel-tab ${activeTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveTab('chat')}
+            >
+              Chat
+            </button>
+            <button 
+              className={`panel-tab ${activeTab === 'participants' ? 'active' : ''}`}
+              onClick={() => setActiveTab('participants')}
+            >
+              Participants
+            </button>
+          </div>
+
+          <div className="panel-content">
+            {activeTab === 'chat' ? (
+              <div>
+                <div className="chat-messages">
+                  {chatMessages.map((msg) => (
+                    <div key={msg.id} className={`chat-message ${msg.isOwn ? 'own' : 'other'}`}>
+                      <strong>{msg.user}:</strong> {msg.message}
+                    </div>
+                  ))}
+                </div>
+                <div className="chat-input">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Type a message..."
+                    onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  />
+                  <button onClick={sendMessage}>Send</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {students.length > 0 ? (
+                  students.map((student) => (
+                    <div key={student.id} className="participant-item">
+                      <span className="participant-name">{student.name}</span>
+                      <button 
+                        className="kick-button"
+                        onClick={() => kickStudent(student.id)}
+                      >
+                        Kick out
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ color: '#6E6E6E', textAlign: 'center', padding: '20px' }}>
+                    No participants yet
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Floating Chat Button */}
+        <button 
+          className="floating-chat"
+          onClick={() => setShowSidePanel(!showSidePanel)}
+        >
+          💬
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default TeacherDashboard;
