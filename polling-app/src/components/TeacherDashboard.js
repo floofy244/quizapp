@@ -26,7 +26,20 @@ const TeacherDashboard = ({ onBack }) => {
   useEffect(() => {
     // prefer explicit env var, otherwise use same origin (when frontend served by backend)
     const socketUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
-    const newSocket = io(socketUrl);
+    const newSocket = io(socketUrl, {
+      transports: ['polling', 'websocket'], // Prefer polling for mobile
+      path: '/socket.io',
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      upgrade: true,
+      forceNew: true,
+      // Mobile-specific optimizations
+      pingTimeout: 60000,
+      pingInterval: 25000
+    });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
@@ -96,9 +109,40 @@ const TeacherDashboard = ({ onBack }) => {
       setTimeout(() => setError(''), 5000);
     });
 
+    // Mobile-specific: Handle page visibility changes
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && newSocket.disconnected) {
+        console.log('Page became visible, reconnecting socket...');
+        newSocket.connect();
+      }
+    };
+
+    // Mobile-specific: Handle focus events
+    const handleFocus = () => {
+      if (newSocket.disconnected) {
+        console.log('Window focused, reconnecting socket...');
+        newSocket.connect();
+      }
+    };
+
+    // Add event listeners for mobile optimization
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    // Mobile-specific: Periodic connection check
+    const connectionCheckInterval = setInterval(() => {
+      if (newSocket.disconnected && document.visibilityState === 'visible') {
+        console.log('Periodic check: reconnecting socket...');
+        newSocket.connect();
+      }
+    }, 10000); // Check every 10 seconds
+
     // NOTE: end-poll handling should be implemented server-side; remove client-side emit logic here.
 
     return () => {
+      clearInterval(connectionCheckInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
       newSocket.close();
     };
   }, []);

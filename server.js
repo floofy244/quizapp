@@ -23,7 +23,12 @@ const io = new Server(httpServer, {
     origin: allowedOrigins,
     methods: ['GET', 'POST']
   },
-  transports: ['websocket', 'polling']
+  transports: ['polling', 'websocket'], // Prefer polling for mobile
+  // Mobile-specific optimizations
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 10000,
+  allowEIO3: true
 });
 
 app.use(express.json());
