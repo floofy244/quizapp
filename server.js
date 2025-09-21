@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { Server } = require('socket.io');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -114,55 +115,68 @@ io.on('connection', (socket) => {
 
   // Teacher creates a poll
   socket.on('create-poll', (pollData) => {
-    // Check if teacher can create a poll
-    if (activePoll && activePoll.status === 'active') {
-      socket.emit('error', 'Cannot create new poll while one is active');
-      return;
-    }
-
-    // Check if all students have answered the previous poll
-    if (activePoll && activePoll.status === 'completed') {
-      const allAnswered = Array.from(students.values()).every(student => student.hasAnswered);
-      if (!allAnswered) {
-        socket.emit('error', 'Wait for all students to answer the previous question');
+    console.log('Teacher creating poll:', pollData);
+    try {
+      // Check if teacher can create a poll
+      if (activePoll && activePoll.status === 'active') {
+        socket.emit('error', 'Cannot create new poll while one is active');
         return;
       }
+
+      // Check if all students have answered the previous poll
+      if (activePoll && activePoll.status === 'completed') {
+        const allAnswered = Array.from(students.values()).every(student => student.hasAnswered);
+        if (!allAnswered) {
+          socket.emit('error', 'Wait for all students to answer the previous question');
+          return;
+        }
+      }
+
+      // Validate poll data
+      if (!pollData || !pollData.question || !pollData.options || !Array.isArray(pollData.options)) {
+        socket.emit('error', 'Invalid poll data provided');
+        return;
+      }
+
+      // Create new poll
+      const pollId = uuidv4();
+      activePoll = {
+        id: pollId,
+        question: pollData.question,
+        options: pollData.options,
+        timeLimit: pollData.timeLimit || 60,
+        timeLeft: pollData.timeLimit || 60,
+        status: 'active',
+        correctAnswers: Array.isArray(pollData.correctAnswers) ? pollData.correctAnswers : pollData.options.map(() => false),
+        createdAt: new Date()
+      };
+
+      // Reset student answers
+      students.forEach(student => {
+        student.hasAnswered = false;
+        student.answer = null;
+      });
+
+      // Reset results
+      pollResults = {};
+      activePoll.options.forEach(o => { pollResults[o] = 0; });
+
+      // Notify all clients
+      console.log('Broadcasting poll-created event to all clients');
+      io.emit('poll-created', {
+        id: activePoll.id,
+        question: activePoll.question,
+        options: activePoll.options,
+        timeLeft: activePoll.timeLeft,
+        status: activePoll.status
+      });
+
+      // Start countdown
+      startPollCountdown();
+    } catch (error) {
+      console.error('Error creating poll:', error);
+      socket.emit('error', 'Failed to create poll. Please try again.');
     }
-
-    // Create new poll
-    const pollId = uuidv4();
-    activePoll = {
-      id: pollId,
-      question: pollData.question,
-      options: pollData.options,
-      timeLimit: pollData.timeLimit || 60,
-      timeLeft: pollData.timeLimit || 60,
-      status: 'active',
-      correctAnswers: Array.isArray(pollData.correctAnswers) ? pollData.correctAnswers : pollData.options.map(() => false),
-      createdAt: new Date()
-    };
-
-    // Reset student answers
-    students.forEach(student => {
-      student.hasAnswered = false;
-      student.answer = null;
-    });
-
-    // Reset results
-    pollResults = {};
-    activePoll.options.forEach(o => { pollResults[o] = 0; });
-
-    // Notify all clients
-    io.emit('poll-created', {
-      id: activePoll.id,
-      question: activePoll.question,
-      options: activePoll.options,
-      timeLeft: activePoll.timeLeft,
-      status: activePoll.status
-    });
-
-    // Start countdown
-    startPollCountdown();
   });
 
   // Teacher can end an active poll early

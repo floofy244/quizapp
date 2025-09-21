@@ -96,16 +96,6 @@ const TeacherDashboard = ({ onBack }) => {
       setTimeout(() => setError(''), 5000);
     });
 
-    // Teacher creates a poll
-    newSocket.on('create-poll', (pollData) => {
-      setPoll(pollData);
-      setLastPoll(pollData);
-      setResults({});
-      setShowResults(false);
-      setSuccess('Poll created successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    });
-
     // NOTE: end-poll handling should be implemented server-side; remove client-side emit logic here.
 
     return () => {
