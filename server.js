@@ -135,8 +135,10 @@ io.on('connection', (socket) => {
       id: pollId,
       question: pollData.question,
       options: pollData.options,
+      timeLimit: pollData.timeLimit || 60,
       timeLeft: pollData.timeLimit || 60,
       status: 'active',
+      correctAnswers: Array.isArray(pollData.correctAnswers) ? pollData.correctAnswers : pollData.options.map(() => false),
       createdAt: new Date()
     };
 
@@ -146,7 +148,9 @@ io.on('connection', (socket) => {
       student.answer = null;
     });
 
+    // Reset results
     pollResults = {};
+    activePoll.options.forEach(o => { pollResults[o] = 0; });
 
     // Notify all clients
     io.emit('poll-created', {
@@ -167,9 +171,12 @@ io.on('connection', (socket) => {
       activePoll.status = 'completed';
       // Broadcast final results
       io.emit('poll-completed', {
+        poll: activePoll,
         results: pollResults,
         totalAnswers: Array.from(students.values()).filter(s => s.hasAnswered).length,
-        totalStudents: students.size
+        totalStudents: students.size,
+        correctOptions: activePoll.options.filter((o, i) => !!activePoll.correctAnswers[i]),
+        correctAnswers: activePoll.correctAnswers
       });
     }
   });
@@ -213,9 +220,12 @@ io.on('connection', (socket) => {
     if (allAnswered) {
       activePoll.status = 'completed';
       io.emit('poll-completed', {
+        poll: activePoll,
         results: pollResults,
         totalAnswers: students.size,
-        totalStudents: students.size
+        totalStudents: students.size,
+        correctOptions: activePoll.options.filter((o, i) => !!activePoll.correctAnswers[i]),
+        correctAnswers: activePoll.correctAnswers
       });
     }
   });
@@ -289,9 +299,12 @@ function startPollCountdown() {
       
       // Broadcast final results
       io.emit('poll-completed', {
+        poll: activePoll,
         results: pollResults,
         totalAnswers: Array.from(students.values()).filter(s => s.hasAnswered).length,
-        totalStudents: students.size
+        totalStudents: students.size,
+        correctOptions: activePoll.options.filter((o, i) => !!activePoll.correctAnswers[i]),
+        correctAnswers: activePoll.correctAnswers
       });
     }
   }, 1000);

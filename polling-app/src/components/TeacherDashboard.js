@@ -157,8 +157,16 @@ const TeacherDashboard = ({ onBack }) => {
       return;
     }
 
-    const validOptions = newPoll.options.filter(option => option.trim());
-    if (validOptions.length < 2) {
+    // keep option correctness aligned with filtered options
+    const pairs = newPoll.options.map((opt, i) => ({
+      option: opt,
+      correct: !!newPoll.correctAnswers[i]
+    }));
+    const validPairs = pairs.filter(p => p.option && p.option.trim());
+    const options = validPairs.map(p => p.option.trim());
+    const correctAnswers = validPairs.map(p => p.correct);
+
+    if (options.length < 2) {
       setError('Please provide at least 2 options');
       return;
     }
@@ -167,8 +175,9 @@ const TeacherDashboard = ({ onBack }) => {
     setShowResults(false);
     socket.emit('create-poll', {
       question: newPoll.question.trim(),
-      options: validOptions,
-      timeLimit: newPoll.timeLimit
+      options,
+      timeLimit: newPoll.timeLimit,
+      correctAnswers
     });
 
     setNewPoll({

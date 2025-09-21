@@ -17,6 +17,8 @@ const StudentDashboard = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('chat');
   const [chatMessages, setChatMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [answerCorrect, setAnswerCorrect] = useState(null);
+  const [correctOptions, setCorrectOptions] = useState([]);
 
   useEffect(() => {
     const socketUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
@@ -76,8 +78,12 @@ const StudentDashboard = ({ onBack }) => {
     });
 
     newSocket.on('poll-completed', (data) => {
+      if (data.correctOptions) setCorrectOptions(data.correctOptions);
+      if (data.poll && data.poll.correctAnswers) {
+        // optional: store poll.correctAnswers if needed
+      }
       setPoll(prev => prev ? { ...prev, status: 'completed' } : null);
-      setResults(data.results);
+      setResults(data.results || {});
     });
 
     newSocket.on('time-update', (data) => {
@@ -101,6 +107,15 @@ const StudentDashboard = ({ onBack }) => {
       setTimeout(() => setError(''), 5000);
     });
 
+    // add listeners for feedback and final reveal (keep existing listeners)
+    newSocket.on('answer-feedback', (data) => {
+      // { correct: boolean, selected: string, correctOptions: [ ... ] }
+      setAnswerCorrect(!!data.correct);
+      if (Array.isArray(data.correctOptions)) setCorrectOptions(data.correctOptions);
+      setSuccess(data.correct ? 'Your answer is correct' : 'Your answer is incorrect');
+      setTimeout(() => setSuccess(''), 3000);
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -116,16 +131,12 @@ const StudentDashboard = ({ onBack }) => {
     socket.emit('student-join', studentName.trim());
   };
 
+  // when student submits an answer, clear previous correctness state
   const submitAnswer = () => {
-    if (!selectedAnswer) {
-      setError('Please select an answer');
-      return;
-    }
+    if (!selectedAnswer) return;
     socket.emit('submit-answer', selectedAnswer);
     setHasAnswered(true);
-    setError('');
-    setSuccess('Answer submitted successfully!');
-    setTimeout(() => setSuccess(''), 3000);
+    setAnswerCorrect(null);
   };
 
   const selectAnswer = (answer) => {
@@ -303,14 +314,15 @@ const StudentDashboard = ({ onBack }) => {
                 >
                   <div className="poll-option-number">{index + 1}</div>
                   <span>{option}</span>
-                  {results[option] && (
-                    <div className="result-fill" style={{ 
-                      width: `${(results[option] / Math.max(...Object.values(results))) * 100}%`,
-                      height: '4px',
-                      background: '#7765DA',
-                      borderRadius: '2px',
-                      marginLeft: 'auto'
-                    }}></div>
+
+                  {hasAnswered && selectedAnswer === option && answerCorrect !== null && (
+                    <span className={`answer-indicator ${answerCorrect ? 'correct' : 'wrong'}`}>
+                      {answerCorrect ? '✓ Correct' : '✕ Wrong'}
+                    </span>
+                  )}
+
+                  {(!hasAnswered || poll?.status === 'completed') && correctOptions.includes(option) && poll?.status === 'completed' && (
+                    <span className="correct-badge">Correct</span>
                   )}
                 </div>
               ))}
