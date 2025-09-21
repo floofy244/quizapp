@@ -19,6 +19,7 @@ const StudentDashboard = ({ onBack }) => {
   const [newMessage, setNewMessage] = useState('');
   const [answerCorrect, setAnswerCorrect] = useState(null);
   const [correctOptions, setCorrectOptions] = useState([]);
+  const [participants, setParticipants] = useState([]);
 
   useEffect(() => {
     const socketUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
@@ -105,6 +106,10 @@ const StudentDashboard = ({ onBack }) => {
 
     newSocket.on('chat-history', (messages) => {
       setChatMessages(messages);
+    });
+
+    newSocket.on('student-list-updated', (data) => {
+      setParticipants(data.students || []);
     });
 
     newSocket.on('error', (message) => {
@@ -307,16 +312,24 @@ const StudentDashboard = ({ onBack }) => {
             <div className="poll-question">{poll.question}</div>
             
             <div className="poll-options">
-              {poll.options.map((option, index) => (
-                <div 
-                  key={index} 
-                  className={`poll-option ${selectedAnswer === option ? 'selected' : ''}`}
-                  onClick={() => selectAnswer(option)}
-                >
-                  <div className="poll-option-number">{index + 1}</div>
-                  <span>{option}</span>
-                </div>
-              ))}
+              {poll.options.map((option, index) => {
+                const isCorrect = poll.correctAnswers && poll.correctAnswers[index];
+                return (
+                  <div 
+                    key={index} 
+                    className={`poll-option ${selectedAnswer === option ? 'selected' : ''} ${isCorrect ? 'correct-option' : ''}`}
+                    onClick={() => selectAnswer(option)}
+                  >
+                    <div className="poll-option-number">{index + 1}</div>
+                    <div className="poll-option-content">
+                      <span>{option}</span>
+                      {isCorrect && (
+                        <span className="correct-badge">✓ Correct</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ textAlign: 'right', marginTop: '24px' }}>
@@ -343,25 +356,33 @@ const StudentDashboard = ({ onBack }) => {
             <div className="poll-question">{poll.question}</div>
             
             <div className="poll-options">
-              {poll.options.map((option, index) => (
-                <div 
-                  key={index} 
-                  className={`poll-option ${selectedAnswer === option ? 'selected' : ''}`}
-                >
-                  <div className="poll-option-number">{index + 1}</div>
-                  <span>{option}</span>
+              {poll.options.map((option, index) => {
+                const isCorrect = poll.correctAnswers && poll.correctAnswers[index];
+                return (
+                  <div 
+                    key={index} 
+                    className={`poll-option ${selectedAnswer === option ? 'selected' : ''} ${isCorrect ? 'correct-option' : ''}`}
+                  >
+                    <div className="poll-option-number">{index + 1}</div>
+                    <div className="poll-option-content">
+                      <span>{option}</span>
+                      {isCorrect && (
+                        <span className="correct-badge">✓ Correct</span>
+                      )}
+                    </div>
 
-                  {hasAnswered && selectedAnswer === option && answerCorrect !== null && (
-                    <span className={`answer-indicator ${answerCorrect ? 'correct' : 'wrong'}`}>
-                      {answerCorrect ? '✓ Correct' : '✕ Wrong'}
-                    </span>
-                  )}
+                    {hasAnswered && selectedAnswer === option && answerCorrect !== null && (
+                      <span className={`answer-indicator ${answerCorrect ? 'correct' : 'wrong'}`}>
+                        {answerCorrect ? '✓ Correct' : '✕ Wrong'}
+                      </span>
+                    )}
 
-                  {(!hasAnswered || poll?.status === 'completed') && correctOptions.includes(option) && poll?.status === 'completed' && (
-                    <span className="correct-badge">Correct</span>
-                  )}
-                </div>
-              ))}
+                    {(!hasAnswered || poll?.status === 'completed') && correctOptions.includes(option) && poll?.status === 'completed' && (
+                      <span className="correct-badge">Correct</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {hasAnswered && (
@@ -381,7 +402,30 @@ const StudentDashboard = ({ onBack }) => {
             {Object.keys(results).length > 0 && (
               <div className="results">
                 <h3 style={{ marginBottom: '16px', color: '#373737' }}>Live Results</h3>
-                {Object.entries(results).map(([option, count]) => {
+                {poll && poll.options ? poll.options.map((option, index) => {
+                  const count = results[option] || 0;
+                  const total = Object.values(results).reduce((sum, c) => sum + c, 0);
+                  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                  const isCorrect = poll.correctAnswers && poll.correctAnswers[index];
+                  
+                  return (
+                    <div key={option} className={`result-item ${isCorrect ? 'correct-answer' : ''}`}>
+                      <div className="result-option-container">
+                        <span className="result-option">{option}</span>
+                        {isCorrect && (
+                          <span className="correct-badge">✓ Correct</span>
+                        )}
+                      </div>
+                      <div className="result-bar">
+                        <div 
+                          className={`result-fill ${isCorrect ? 'correct-fill' : ''}`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                      <span className="result-percentage">{percentage}%</span>
+                    </div>
+                  );
+                }) : Object.entries(results).map(([option, count]) => {
                   const total = Object.values(results).reduce((sum, c) => sum + c, 0);
                   const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
                   
@@ -473,9 +517,20 @@ const StudentDashboard = ({ onBack }) => {
               </div>
             ) : (
               <div>
-                <p style={{ color: '#6E6E6E', textAlign: 'center', padding: '20px' }}>
-                  Participants list will appear here when available
-                </p>
+                {participants.length > 0 ? (
+                  participants.map((participant) => (
+                    <div key={participant.id} className="participant-item">
+                      <span className="participant-name">{participant.name}</span>
+                      <span className={`participant-status ${participant.hasAnswered ? 'answered' : 'pending'}`}>
+                        {participant.hasAnswered ? '✓ Answered' : '⏳ Pending'}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ color: '#6E6E6E', textAlign: 'center', padding: '20px' }}>
+                    No participants yet
+                  </p>
+                )}
               </div>
             )}
           </div>

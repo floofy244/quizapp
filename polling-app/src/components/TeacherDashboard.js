@@ -22,6 +22,8 @@ const TeacherDashboard = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('chat');
   const [chatMessages, setChatMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [pastPolls, setPastPolls] = useState([]);
+  const [loadingPolls, setLoadingPolls] = useState(false);
 
   useEffect(() => {
     // prefer explicit env var, otherwise use same origin (when frontend served by backend)
@@ -249,6 +251,23 @@ const TeacherDashboard = ({ onBack }) => {
     socket.emit('kick-student', studentId);
   };
 
+  const fetchPastPolls = async () => {
+    setLoadingPolls(true);
+    try {
+      const response = await fetch('/api/polls');
+      if (response.ok) {
+        const polls = await response.json();
+        setPastPolls(polls);
+      } else {
+        setError('Failed to fetch past polls');
+      }
+    } catch (err) {
+      setError('Error fetching past polls: ' + err.message);
+    } finally {
+      setLoadingPolls(false);
+    }
+  };
+
   const canCreatePoll = () => {
     // Allow showing the create form only when there is no active poll AND teacher isn't viewing results.
     return (!poll || poll.status === 'completed') && !showResults;
@@ -395,27 +414,58 @@ const TeacherDashboard = ({ onBack }) => {
             <div className="poll-question">{displayedPoll ? displayedPoll.question : 'Poll results'}</div>
             
             <div className="poll-options">
-              {(displayedPoll && displayedPoll.options ? displayedPoll.options : []).map((option, index) => (
-                <div key={index} className="poll-option">
-                  <div className="poll-option-number">{index + 1}</div>
-                  <span>{option}</span>
-                  {results[option] && (
-                    <div className="result-fill" style={{ 
-                      width: `${(results[option] / Math.max(...Object.values(results))) * 100}%`,
-                      height: '4px',
-                      background: '#7765DA',
-                      borderRadius: '2px',
-                      marginLeft: 'auto'
-                    }}></div>
-                  )}
-                </div>
-              ))}
+              {(displayedPoll && displayedPoll.options ? displayedPoll.options : []).map((option, index) => {
+                const isCorrect = displayedPoll.correctAnswers && displayedPoll.correctAnswers[index];
+                return (
+                  <div key={index} className={`poll-option ${isCorrect ? 'correct-option' : ''}`}>
+                    <div className="poll-option-number">{index + 1}</div>
+                    <div className="poll-option-content">
+                      <span>{option}</span>
+                      {isCorrect && (
+                        <span className="correct-badge">✓ Correct</span>
+                      )}
+                    </div>
+                    {results[option] && (
+                      <div className="result-fill" style={{ 
+                        width: `${(results[option] / Math.max(...Object.values(results))) * 100}%`,
+                        height: '4px',
+                        background: isCorrect ? '#28A745' : '#7765DA',
+                        borderRadius: '2px',
+                        marginLeft: 'auto'
+                      }}></div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {Object.keys(results).length > 0 && (
               <div className="results">
                 <h3 style={{ marginBottom: '16px', color: '#373737' }}>Live Results</h3>
-                {Object.entries(results).map(([option, count]) => {
+                {displayedPoll && displayedPoll.options ? displayedPoll.options.map((option, index) => {
+                  const count = results[option] || 0;
+                  const total = Object.values(results).reduce((sum, c) => sum + c, 0);
+                  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                  const isCorrect = displayedPoll.correctAnswers && displayedPoll.correctAnswers[index];
+                  
+                  return (
+                    <div key={option} className={`result-item ${isCorrect ? 'correct-answer' : ''}`}>
+                      <div className="result-option-container">
+                        <span className="result-option">{option}</span>
+                        {isCorrect && (
+                          <span className="correct-badge">✓ Correct</span>
+                        )}
+                      </div>
+                      <div className="result-bar">
+                        <div 
+                          className={`result-fill ${isCorrect ? 'correct-fill' : ''}`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                      <span className="result-percentage">{percentage}%</span>
+                    </div>
+                  );
+                }) : Object.entries(results).map(([option, count]) => {
                   const total = Object.values(results).reduce((sum, c) => sum + c, 0);
                   const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
                   
@@ -489,6 +539,15 @@ const TeacherDashboard = ({ onBack }) => {
             >
               Participants
             </button>
+            <button 
+              className={`panel-tab ${activeTab === 'polls' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('polls');
+                fetchPastPolls();
+              }}
+            >
+              Past Polls
+            </button>
           </div>
 
           <div className="panel-content">
@@ -511,6 +570,81 @@ const TeacherDashboard = ({ onBack }) => {
                   />
                   <button onClick={sendMessage}>Send</button>
                 </div>
+              </div>
+            ) : activeTab === 'polls' ? (
+              <div>
+                {loadingPolls ? (
+                  <div style={{ textAlign: 'center', padding: '20px' }}>
+                    <div className="loading-spinner"></div>
+                    <p>Loading past polls...</p>
+                  </div>
+                ) : pastPolls.length > 0 ? (
+                  <div className="past-polls-list">
+                    {pastPolls.map((poll) => (
+                      <div key={poll.id} className="past-poll-item">
+                        <div className="past-poll-header">
+                          <h4 className="past-poll-question">{poll.question}</h4>
+                          <span className="past-poll-date">
+                            {new Date(poll.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="past-poll-stats">
+                          <span className="past-poll-stat">
+                            {poll.totalAnswers}/{poll.totalStudents} answered
+                          </span>
+                          <span className="past-poll-stat">
+                            {poll.timeLimit}s time limit
+                          </span>
+                        </div>
+                        <div className="past-poll-results">
+                          {poll.options ? poll.options.map((option, index) => {
+                            const count = poll.results[option] || 0;
+                            const total = Object.values(poll.results).reduce((sum, c) => sum + c, 0);
+                            const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                            const isCorrect = poll.correctAnswers && poll.correctAnswers[index];
+                            
+                            return (
+                              <div key={option} className={`past-poll-result ${isCorrect ? 'correct-answer' : ''}`}>
+                                <div className="past-poll-option-container">
+                                  <span className="past-poll-option">{option}</span>
+                                  {isCorrect && (
+                                    <span className="correct-badge">✓ Correct</span>
+                                  )}
+                                </div>
+                                <div className="past-poll-bar">
+                                  <div 
+                                    className={`past-poll-fill ${isCorrect ? 'correct-fill' : ''}`}
+                                    style={{ width: `${percentage}%` }}
+                                  ></div>
+                                </div>
+                                <span className="past-poll-count">{count} ({percentage}%)</span>
+                              </div>
+                            );
+                          }) : Object.entries(poll.results).map(([option, count]) => {
+                            const total = Object.values(poll.results).reduce((sum, c) => sum + c, 0);
+                            const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                            return (
+                              <div key={option} className="past-poll-result">
+                                <span className="past-poll-option">{option}</span>
+                                <div className="past-poll-bar">
+                                  <div 
+                                    className="past-poll-fill" 
+                                    style={{ width: `${percentage}%` }}
+                                  ></div>
+                                </div>
+                                <span className="past-poll-count">{count} ({percentage}%)</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: '#6E6E6E', textAlign: 'center', padding: '20px' }}>
+                    No past polls found
+                  </p>
+                )}
               </div>
             ) : (
               <div>

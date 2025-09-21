@@ -437,6 +437,60 @@ code {
   text-align: right;
 }
 
+/* Correct Answer Indicators */
+.result-option-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.correct-badge {
+  background: #28A745;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.correct-answer {
+  background: #F8F9FA;
+  border-left: 4px solid #28A745;
+}
+
+.correct-fill {
+  background: linear-gradient(135deg, #28A745 0%, #20C997 100%) !important;
+}
+
+.past-poll-option-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+/* Poll Option Content */
+.poll-option-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.correct-option {
+  border-color: #28A745 !important;
+  background: #F8F9FA !important;
+}
+
+.correct-option .poll-option-number {
+  background: #28A745 !important;
+  color: white !important;
+}
+
 /* Student Count */
 .student-count {
   background: #E3F2FD;
@@ -673,6 +727,114 @@ code {
 
 .kick-button:hover {
   color: #C82333;
+}
+
+.participant-status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 12px;
+}
+
+.participant-status.answered {
+  background: #D4EDDA;
+  color: #155724;
+}
+
+.participant-status.pending {
+  background: #FFF3CD;
+  color: #856404;
+}
+
+/* Past Polls */
+.past-polls-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.past-poll-item {
+  background: #F8F9FA;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.past-poll-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.past-poll-question {
+  font-size: 16px;
+  font-weight: 600;
+  color: #373737;
+  margin: 0;
+  flex: 1;
+  margin-right: 12px;
+}
+
+.past-poll-date {
+  font-size: 12px;
+  color: #6E6E6E;
+  white-space: nowrap;
+}
+
+.past-poll-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.past-poll-stat {
+  font-size: 12px;
+  color: #6E6E6E;
+  background: #E5E5E5;
+  padding: 4px 8px;
+  border-radius: 12px;
+}
+
+.past-poll-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.past-poll-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.past-poll-option {
+  font-size: 14px;
+  color: #373737;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.past-poll-bar {
+  flex: 1;
+  height: 6px;
+  background: #E5E5E5;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.past-poll-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #7765DA 0%, #4F0DCE 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.past-poll-count {
+  font-size: 12px;
+  color: #6E6E6E;
+  min-width: 60px;
+  text-align: right;
 }
 
 /* Floating Chat Button */

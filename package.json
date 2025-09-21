@@ -8,13 +8,19 @@
     "dev": "nodemon server.js",
     "postinstall": "npm install --prefix polling-app && npm run build --prefix polling-app"
   },
-  "keywords": ["polling", "socket.io", "react", "express"],
+  "keywords": [
+    "polling",
+    "socket.io",
+    "react",
+    "express"
+  ],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.18.2",
     "socket.io": "^4.7.2",
-    "cors": "^2.8.5",
+    "sqlite3": "^5.1.7",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

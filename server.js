@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
+const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -39,6 +40,59 @@ let students = new Map();
 let pollResults = {};
 let chatMessages = [];
 
+// Initialize SQLite database
+const db = new sqlite3.Database('./polls.db', (err) => {
+  if (err) {
+    console.error('Error opening database:', err.message);
+  } else {
+    console.log('Connected to SQLite database');
+  }
+});
+
+// Create polls table if it doesn't exist
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS polls (
+    id TEXT PRIMARY KEY,
+    question TEXT NOT NULL,
+    options TEXT NOT NULL,
+    correctAnswers TEXT NOT NULL,
+    timeLimit INTEGER NOT NULL,
+    results TEXT NOT NULL,
+    totalAnswers INTEGER NOT NULL,
+    totalStudents INTEGER NOT NULL,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completedAt DATETIME
+  )`);
+});
+
+// Helper function to save poll to database
+function savePollToDatabase(poll, results, totalAnswers, totalStudents) {
+  const pollData = {
+    id: poll.id,
+    question: poll.question,
+    options: JSON.stringify(poll.options),
+    correctAnswers: JSON.stringify(poll.correctAnswers),
+    timeLimit: poll.timeLimit,
+    results: JSON.stringify(results),
+    totalAnswers: totalAnswers,
+    totalStudents: totalStudents,
+    completedAt: new Date().toISOString()
+  };
+
+  db.run(`INSERT INTO polls (id, question, options, correctAnswers, timeLimit, results, totalAnswers, totalStudents, completedAt) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [pollData.id, pollData.question, pollData.options, pollData.correctAnswers, 
+     pollData.timeLimit, pollData.results, pollData.totalAnswers, pollData.totalStudents, pollData.completedAt],
+    (err) => {
+      if (err) {
+        console.error('Error saving poll to database:', err);
+      } else {
+        console.log('Poll saved to database:', pollData.id);
+      }
+    }
+  );
+}
+
 // Routes
 app.get('/api/status', (req, res) => {
   res.json({ 
@@ -52,6 +106,30 @@ app.get('/api/status', (req, res) => {
     studentCount: students.size,
     results: pollResults,
     students: Array.from(students.values())
+  });
+});
+
+// Get past polls
+app.get('/api/polls', (req, res) => {
+  db.all('SELECT * FROM polls ORDER BY createdAt DESC LIMIT 50', (err, rows) => {
+    if (err) {
+      console.error('Error fetching polls:', err);
+      res.status(500).json({ error: 'Failed to fetch polls' });
+    } else {
+      const polls = rows.map(row => ({
+        id: row.id,
+        question: row.question,
+        options: JSON.parse(row.options),
+        correctAnswers: JSON.parse(row.correctAnswers),
+        timeLimit: row.timeLimit,
+        results: JSON.parse(row.results),
+        totalAnswers: row.totalAnswers,
+        totalStudents: row.totalStudents,
+        createdAt: row.createdAt,
+        completedAt: row.completedAt
+      }));
+      res.json(polls);
+    }
   });
 });
 
@@ -103,6 +181,11 @@ io.on('connection', (socket) => {
     io.to('teachers').emit('student-joined', {
       studentCount: students.size,
       studentName,
+      students: Array.from(students.values())
+    });
+    
+    // Send student list to all students
+    io.to('students').emit('student-list-updated', {
       students: Array.from(students.values())
     });
     
@@ -188,11 +271,16 @@ io.on('connection', (socket) => {
   socket.on('end-poll', () => {
     if (activePoll && activePoll.status === 'active') {
       activePoll.status = 'completed';
+      const totalAnswers = Array.from(students.values()).filter(s => s.hasAnswered).length;
+      
+      // Save poll to database
+      savePollToDatabase(activePoll, pollResults, totalAnswers, students.size);
+      
       // Broadcast final results
       io.emit('poll-completed', {
         poll: activePoll,
         results: pollResults,
-        totalAnswers: Array.from(students.values()).filter(s => s.hasAnswered).length,
+        totalAnswers: totalAnswers,
         totalStudents: students.size,
         correctOptions: activePoll.options.filter((o, i) => !!activePoll.correctAnswers[i]),
         correctAnswers: activePoll.correctAnswers
@@ -238,6 +326,10 @@ io.on('connection', (socket) => {
     const allAnswered = Array.from(students.values()).every(s => s.hasAnswered);
     if (allAnswered) {
       activePoll.status = 'completed';
+      
+      // Save poll to database
+      savePollToDatabase(activePoll, pollResults, students.size, students.size);
+      
       io.emit('poll-completed', {
         poll: activePoll,
         results: pollResults,
@@ -278,6 +370,11 @@ io.on('connection', (socket) => {
         studentName: student.name,
         students: Array.from(students.values())
       });
+      
+      // Notify students about student being kicked
+      io.to('students').emit('student-list-updated', {
+        students: Array.from(students.values())
+      });
     }
   });
 
@@ -293,6 +390,11 @@ io.on('connection', (socket) => {
       io.to('teachers').emit('student-left', {
         studentCount: students.size,
         studentName: student.name,
+        students: Array.from(students.values())
+      });
+      
+      // Notify students about student leaving
+      io.to('students').emit('student-list-updated', {
         students: Array.from(students.values())
       });
     }
@@ -316,11 +418,16 @@ function startPollCountdown() {
       activePoll.status = 'completed';
       clearInterval(countdownInterval);
       
+      const totalAnswers = Array.from(students.values()).filter(s => s.hasAnswered).length;
+      
+      // Save poll to database
+      savePollToDatabase(activePoll, pollResults, totalAnswers, students.size);
+      
       // Broadcast final results
       io.emit('poll-completed', {
         poll: activePoll,
         results: pollResults,
-        totalAnswers: Array.from(students.values()).filter(s => s.hasAnswered).length,
+        totalAnswers: totalAnswers,
         totalStudents: students.size,
         correctOptions: activePoll.options.filter((o, i) => !!activePoll.correctAnswers[i]),
         correctAnswers: activePoll.correctAnswers
