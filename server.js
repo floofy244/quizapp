@@ -1,19 +1,23 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
-const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
+const path = require('path'); // <-- ensure path is available
+const { Server } = require('socket.io');
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
+const httpServer = http.createServer(app);
+
+// Allow CORS from the frontend; include the Render URL by default
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:3000', 'https://quizapp.onrender.com'];
+
+const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"]
+    origin: allowedOrigins,
+    methods: ['GET', 'POST']
   }
 });
 
-app.use(cors());
 app.use(express.json());
 
 // Store active polls and students
@@ -150,6 +154,19 @@ io.on('connection', (socket) => {
     startPollCountdown();
   });
 
+  // Teacher can end an active poll early
+  socket.on('end-poll', () => {
+    if (activePoll && activePoll.status === 'active') {
+      activePoll.status = 'completed';
+      // Broadcast final results
+      io.emit('poll-completed', {
+        results: pollResults,
+        totalAnswers: Array.from(students.values()).filter(s => s.hasAnswered).length,
+        totalStudents: students.size
+      });
+    }
+  });
+  
   // Student submits answer
   socket.on('submit-answer', (answer) => {
     const student = students.get(socket.id);
@@ -273,7 +290,16 @@ function startPollCountdown() {
   }, 1000);
 }
 
+// Serve React build (single-host deployment)
+const buildPath = path.join(__dirname, 'polling-app', 'build');
+if (require('fs').existsSync(buildPath)) {
+  app.use(express.static(buildPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+}
+
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+httpServer.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
 });

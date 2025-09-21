@@ -5,7 +5,9 @@ const TeacherDashboard = ({ onBack }) => {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [poll, setPoll] = useState(null);
+  const [lastPoll, setLastPoll] = useState(null); // snapshot for completed polls
   const [results, setResults] = useState({});
+  const [showResults, setShowResults] = useState(false); // keep result view visible until teacher chooses to create new
   const [studentCount, setStudentCount] = useState(0);
   const [students, setStudents] = useState([]);
   const [newPoll, setNewPoll] = useState({
@@ -22,7 +24,9 @@ const TeacherDashboard = ({ onBack }) => {
   const [newMessage, setNewMessage] = useState('');
 
   useEffect(() => {
-    const newSocket = io('http://localhost:5000');
+    // prefer explicit env var, otherwise use same origin (when frontend served by backend)
+    const socketUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
+    const newSocket = io(socketUrl);
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
@@ -32,6 +36,8 @@ const TeacherDashboard = ({ onBack }) => {
 
     newSocket.on('poll-status', (data) => {
       setPoll(data.activePoll);
+      // keep a snapshot of the active poll so we can show results even if server clears activePoll
+      if (data.activePoll) setLastPoll(data.activePoll);
       setResults(data.results);
       setStudentCount(data.studentCount);
       setStudents(data.students || []);
@@ -39,7 +45,9 @@ const TeacherDashboard = ({ onBack }) => {
 
     newSocket.on('poll-created', (data) => {
       setPoll(data);
+      setLastPoll(data);
       setResults({});
+      setShowResults(false);
       setSuccess('Poll created successfully!');
       setTimeout(() => setSuccess(''), 3000);
     });
@@ -49,8 +57,10 @@ const TeacherDashboard = ({ onBack }) => {
     });
 
     newSocket.on('poll-completed', (data) => {
-      setPoll(prev => prev ? { ...prev, status: 'completed' } : null);
+      // keep the poll marked completed if we have it; show results view explicitly.
+      setPoll(prev => prev ? { ...prev, status: 'completed' } : prev);
       setResults(data.results);
+      setShowResults(true);
       setSuccess('Poll completed!');
       setTimeout(() => setSuccess(''), 3000);
     });
@@ -85,6 +95,18 @@ const TeacherDashboard = ({ onBack }) => {
       setError(message);
       setTimeout(() => setError(''), 5000);
     });
+
+    // Teacher creates a poll
+    newSocket.on('create-poll', (pollData) => {
+      setPoll(pollData);
+      setLastPoll(pollData);
+      setResults({});
+      setShowResults(false);
+      setSuccess('Poll created successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    });
+
+    // NOTE: end-poll handling should be implemented server-side; remove client-side emit logic here.
 
     return () => {
       newSocket.close();
@@ -141,6 +163,8 @@ const TeacherDashboard = ({ onBack }) => {
       return;
     }
 
+    // clear any previous results view when teacher actually creates a new poll
+    setShowResults(false);
     socket.emit('create-poll', {
       question: newPoll.question.trim(),
       options: validOptions,
@@ -157,9 +181,12 @@ const TeacherDashboard = ({ onBack }) => {
   };
 
   const askNewQuestion = () => {
-    if (!poll || poll.status === 'completed') {
-      createPoll();
-    }
+    // If a poll is active, do nothing (button is disabled anyway).
+    // If no active poll, open the create form so teacher can compose a new poll.
+    if (poll && poll.status === 'active') return;
+    setShowResults(false);
+    setPoll(null);
+    // keep lastPoll so results view can still be shown if teacher cancels
   };
 
   const sendMessage = () => {
@@ -180,7 +207,8 @@ const TeacherDashboard = ({ onBack }) => {
   };
 
   const canCreatePoll = () => {
-    return !poll || poll.status === 'completed';
+    // Allow showing the create form only when there is no active poll AND teacher isn't viewing results.
+    return (!poll || poll.status === 'completed') && !showResults;
   };
 
   const formatTime = (seconds) => {
@@ -201,6 +229,9 @@ const TeacherDashboard = ({ onBack }) => {
       </div>
     );
   }
+
+  // prefer the active poll, fallback to the lastPoll snapshot for completed polls
+  const displayedPoll = poll || lastPoll;
 
   return (
     <div className="app">
@@ -311,17 +342,17 @@ const TeacherDashboard = ({ onBack }) => {
           <div className="poll-container">
             <div className="question-header">
               <span className="question-number">Question</span>
-              {poll.status === 'active' && (
+              {displayedPoll && displayedPoll.status === 'active' && (
                 <div className="timer">
-                  {formatTime(poll.timeLeft)}
+                  {formatTime(displayedPoll.timeLeft)}
                 </div>
               )}
             </div>
             
-            <div className="poll-question">{poll.question}</div>
+            <div className="poll-question">{displayedPoll ? displayedPoll.question : 'Poll results'}</div>
             
             <div className="poll-options">
-              {poll.options.map((option, index) => (
+              {(displayedPoll && displayedPoll.options ? displayedPoll.options : []).map((option, index) => (
                 <div key={index} className="poll-option">
                   <div className="poll-option-number">{index + 1}</div>
                   <span>{option}</span>
@@ -361,9 +392,30 @@ const TeacherDashboard = ({ onBack }) => {
               </div>
             )}
 
-            <button className="btn" onClick={askNewQuestion} style={{ marginTop: '24px' }}>
-              + Ask a new question
-            </button>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <button
+                className="btn"
+                onClick={askNewQuestion}
+                disabled={poll && poll.status === 'active'}
+                title={poll && poll.status === 'active' ? 'End the current poll to ask a new question' : ''}
+              >
+                + Ask a new question
+              </button>
+
+              {poll && poll.status === 'active' && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    if (socket) {
+                      // End current poll — server should broadcast 'poll-completed'
+                      socket.emit('end-poll');
+                    }
+                  }}
+                >
+                  End Poll
+                </button>
+              )}
+            </div>
           </div>
         )}
 
