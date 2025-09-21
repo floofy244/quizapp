@@ -170,6 +170,11 @@ io.on('connection', (socket) => {
       hasAnswered: false,
       answer: null
     });
+
+    // If there's a completed poll, reset the student's state
+    if (activePoll && activePoll.status === 'completed') {
+      console.log(`Student ${studentName} rejoined during completed poll, resetting their state`);
+    }
     
     socket.join('students');
     socket.emit('joined-successfully', { studentName });
@@ -191,13 +196,25 @@ io.on('connection', (socket) => {
     
     // Send current poll status to student
     if (activePoll) {
-      socket.emit('poll-created', {
-        id: activePoll.id,
-        question: activePoll.question,
-        options: activePoll.options,
-        timeLeft: activePoll.timeLeft,
-        status: activePoll.status
-      });
+      if (activePoll.status === 'active') {
+        socket.emit('poll-created', {
+          id: activePoll.id,
+          question: activePoll.question,
+          options: activePoll.options,
+          timeLeft: activePoll.timeLeft,
+          status: activePoll.status
+        });
+      } else if (activePoll.status === 'completed') {
+        // Send completed poll info to newly joined student
+        socket.emit('poll-completed', {
+          poll: activePoll,
+          results: pollResults,
+          totalAnswers: Array.from(students.values()).filter(s => s.hasAnswered).length,
+          totalStudents: students.size,
+          correctOptions: activePoll.options.filter((o, i) => !!activePoll.correctAnswers[i]),
+          correctAnswers: activePoll.correctAnswers
+        });
+      }
     }
   });
 
@@ -211,13 +228,11 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Check if all students have answered the previous poll
+      // Clear any completed poll state to allow new poll creation
       if (activePoll && activePoll.status === 'completed') {
-        const allAnswered = Array.from(students.values()).every(student => student.hasAnswered);
-        if (!allAnswered) {
-          socket.emit('error', 'Wait for all students to answer the previous question');
-          return;
-        }
+        console.log('Clearing completed poll state to allow new poll creation');
+        activePoll = null;
+        pollResults = {};
       }
 
       // Validate poll data
@@ -239,7 +254,7 @@ io.on('connection', (socket) => {
         createdAt: new Date()
       };
 
-      // Reset student answers
+      // Reset student answers for all current students
       students.forEach(student => {
         student.hasAnswered = false;
         student.answer = null;
