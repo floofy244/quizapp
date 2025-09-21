@@ -19,13 +19,45 @@ const StudentDashboard = ({ onBack }) => {
   const [newMessage, setNewMessage] = useState('');
 
   useEffect(() => {
-    const newSocket = io('http://localhost:5000');
-    setSocket(newSocket);
-
-    newSocket.on('connect', () => {
-      setConnected(true);
+    const socketUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
+    const newSocket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      path: '/socket.io',
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      timeout: 20000,
+      upgrade: true
     });
 
+    // Basic lifecycle / debug listeners
+    newSocket.on('connect', () => {
+      console.info('student socket connected', newSocket.id, 'to', socketUrl);
+      setConnected(true);
+    });
+    newSocket.on('connect_error', (err) => {
+      console.error('student connect_error', err);
+      setError('Socket connection error: ' + (err?.message || 'unknown'));
+    });
+    newSocket.on('connect_timeout', () => {
+      console.warn('student connect_timeout');
+      setError('Socket connection timeout');
+    });
+    newSocket.on('reconnect_attempt', (n) => console.info('student reconnect attempt', n));
+    newSocket.on('reconnect_failed', () => {
+      console.error('student reconnect failed');
+      setError('Unable to reconnect to server');
+    });
+    newSocket.on('disconnect', (reason) => {
+      console.warn('student socket disconnected', reason);
+      setConnected(false);
+      if (reason !== 'io client disconnect') setError('Disconnected: ' + reason);
+    });
+    newSocket.on('error', (e) => {
+      console.error('student socket error', e);
+    });
+
+    // Application event listeners (kept from original implementation)
     newSocket.on('joined-successfully', (data) => {
       setNameSubmitted(true);
       setSuccess(`Welcome, ${data.studentName}!`);
@@ -69,8 +101,10 @@ const StudentDashboard = ({ onBack }) => {
       setTimeout(() => setError(''), 5000);
     });
 
+    setSocket(newSocket);
+
     return () => {
-      newSocket.close();
+      try { newSocket.close(); } catch (e) { /* ignore */ }
     };
   }, []);
 
