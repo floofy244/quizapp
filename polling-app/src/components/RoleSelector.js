@@ -15,7 +15,7 @@ const RoleSelector = ({ onRoleSelect }) => {
     <div className="app">
       <div className="header">
         <div className="header-tag">
-          + Intervue Poll
+          <img src="/logo.png" alt="Intervue Poll" />
         </div>
       </div>
       

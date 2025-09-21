@@ -33,10 +33,10 @@ code {
 }
 
 .header-tag {
-  background: #7765DA;
+  background: transparent;
   color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
+  padding: 0;
+  border-radius: 0;
   font-size: 14px;
   font-weight: 600;
   display: flex;
@@ -44,9 +44,9 @@ code {
   gap: 8px;
 }
 
-.header-tag::before {
-  content: "⚡";
-  font-size: 16px;
+.header-tag img {
+  height: 40px;
+  width: auto;
 }
 
 /* Main Container */
@@ -502,19 +502,40 @@ code {
 /* Chat and Participants Panel */
 .side-panel {
   position: fixed;
-  right: 0;
-  top: 0;
-  height: 100vh;
-  width: 350px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
   background: white;
-  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
-  transform: translateX(100%);
-  transition: transform 0.3s ease;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
   z-index: 1000;
+  overflow: hidden;
 }
 
 .side-panel.open {
-  transform: translateX(0);
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.side-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.side-panel-overlay.open {
+  opacity: 1;
+  visibility: visible;
 }
 
 .panel-header {
@@ -537,6 +558,18 @@ code {
   font-size: 24px;
   cursor: pointer;
   color: #6E6E6E;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.close-panel:hover {
+  background: #F5F5F5;
+  color: #373737;
 }
 
 .panel-tabs {
@@ -563,7 +596,8 @@ code {
 
 .panel-content {
   padding: 20px;
-  height: calc(100vh - 120px);
+  height: calc(80vh - 120px);
+  max-height: 400px;
   overflow-y: auto;
 }
 
@@ -714,7 +748,8 @@ code {
   }
   
   .side-panel {
-    width: 100%;
+    width: 95%;
+    max-width: none;
   }
   
   .floating-chat {

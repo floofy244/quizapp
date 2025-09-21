@@ -236,7 +236,7 @@ const TeacherDashboard = ({ onBack }) => {
     <div className="app">
       <div className="header">
         <div className="header-tag">
-          + Intervue Poll
+          <img src="/logo.png" alt="Intervue Poll" />
         </div>
       </div>
 
@@ -418,6 +418,11 @@ const TeacherDashboard = ({ onBack }) => {
           </div>
         )}
 
+        {/* Side Panel Overlay */}
+        {showSidePanel && (
+          <div className="side-panel-overlay open" onClick={() => setShowSidePanel(false)}></div>
+        )}
+        
         {/* Side Panel */}
         <div className={`side-panel ${showSidePanel ? 'open' : ''}`}>
           <div className="panel-header">
