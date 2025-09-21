@@ -1,21 +1,24 @@
 const express = require('express');
 const http = require('http');
-const path = require('path'); // <-- ensure path is available
+const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 
 const app = express();
 const httpServer = http.createServer(app);
 
-// Allow CORS from the frontend; include the Render URL by default
+// ensure the deployed URL is allowed
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'https://quizapp.onrender.com'];
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : ['http://localhost:3000', 'https://quizapp.onrender.com', 'https://quizapp-mo86.onrender.com'];
 
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
     methods: ['GET', 'POST']
-  }
+  },
+  // optional: allow both polling and websocket transports
+  transports: ['websocket', 'polling']
 });
 
 app.use(express.json());
@@ -292,7 +295,7 @@ function startPollCountdown() {
 
 // Serve React build (single-host deployment)
 const buildPath = path.join(__dirname, 'polling-app', 'build');
-if (require('fs').existsSync(buildPath)) {
+if (fs.existsSync(buildPath)) {
   app.use(express.static(buildPath));
   app.get('*', (req, res) => {
     res.sendFile(path.join(buildPath, 'index.html'));
